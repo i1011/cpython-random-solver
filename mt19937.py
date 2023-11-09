@@ -85,6 +85,7 @@ class MT19937():
     def __init__(self):
         self.index = N
         self.state = [0] * N
+        self.sig_mtupdate = False
     
     def setstate(self, state: List):
         if not isinstance(state, list) or len(state) != N + 1:
@@ -94,13 +95,14 @@ class MT19937():
         self.state, self.index = state[:N], state[N]
 
     def getstate(self):
-        return tuple(self.state) + tuple(self.index)
+        return tuple(self.state) + (self.index,)
 
     def _update_mt(self):
         mt = self.state
         for kk in range(N):
             y = (mt[kk] & UPPER_MASK) | (mt[(kk + 1) % N] & LOWER_MASK)
             mt[kk] = mt[(kk + M) % N] ^ shr(y, 1) ^ (y % 2) * MATRIX_A
+        self.sig_mtupdate = True
 
     def genrand_uint32(self):
         if self.index >= N:

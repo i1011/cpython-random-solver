@@ -4,14 +4,28 @@ from z3 import BitVec, BitVecRef, Concat, Extract
 class SymRandom():
 
     def __init__(self, solver=None):
-        self.mt = [BitVec(0x80000000 - 1, 32) + 1] + [BitVec(f"init_mt_{i}", 32) for i in range(1, 624)]
+        self.init_mt = [BitVec(0x80000000 - 1, 32) + 1] + [BitVec(f"init_mt_{i}", 32) for i in range(1, 624)]
         self._rng = _mt19937_impl()
-        self._rng.setstate(self.mt + [624])
+        self._rng.setstate(self.init_mt + [624])
+        self.solver = solver if solver else Solver()
+        self.ts = 0
+
+    def next(self):
+        r = self._rng.genrand_uint32()
+        if self._rng.sig_mtupdate:
+            self._rng.sig_mtupdate = False
+            self.ts += 1
+            state = self._rng.getstate()
+            dummy = [BitVec(f"dummy{self.ts}_{i}", 32) for i in range(624)]
+            for i in range(624):
+                self.solver.add(state[i] == dummy[i])
+            self._rng.setstate(dummy + [state[-1]])
+        return r
 
     def random(self):
         """Get the next random number in the range 0.0 <= X < 1.0."""
-        a = Extract(31, 5, self._rng.genrand_uint32())
-        b = Extract(31, 6, self._rng.genrand_uint32())
+        a = Extract(31, 5, self.next())
+        b = Extract(31, 6, self.next())
         return Concat(a, b)
 
     def getrandbits(self, k: int):
@@ -23,7 +37,7 @@ class SymRandom():
         words = (k - 1) // 32 + 1
         result = None
         for _ in range(words):
-            r = self._rng.genrand_uint32()
+            r = self.next()
             assert isinstance(r, BitVecRef)
             if k < 32:
                 r = Extract(31, 32 - k, r)
@@ -62,12 +76,12 @@ def test_getrandbits(n: int, w: int):
     random.seed(seed)
     refs = [random.getrandbits(w) for _ in range(n)]
     sol = Solver()
-    rng = SymRandom()
+    rng = SymRandom(sol)
     for ref in refs:
         sol.add(rng.getrandbits(w) == ref)
     assert sol.check() == sat
     m = sol.model()
-    state = [m.evaluate(s).as_long() for s in rng.mt]
+    state = [m.evaluate(s).as_long() for s in rng.init_mt]
     random.setstate((3, tuple(state + [624]), None))
     for ref in refs:
         assert(random.getrandbits(w) == ref)
@@ -80,12 +94,12 @@ def test_random(n: int):
     random.seed(seed)
     refs = [random.random() for _ in range(n)]
     sol = Solver()
-    rng = SymRandom()
+    rng = SymRandom(sol)
     for ref in refs:
         sol.add(rng.random() == int(ref * 2 ** 53))
     assert sol.check() == sat
     m = sol.model()
-    state = [m.evaluate(s).as_long() for s in rng.mt]
+    state = [m.evaluate(s).as_long() for s in rng.init_mt]
     random.setstate((3, tuple(state + [624]), None))
     for ref in refs:
         assert(random.random() == ref)
@@ -94,4 +108,4 @@ if __name__ == '__main__':
     test_random(200)
     test_getrandbits(625, 32)
     test_getrandbits(180, 100)
-    # test_getrandbits(624 * 8, 4)
+    test_getrandbits(1000, 4)
