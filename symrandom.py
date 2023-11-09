@@ -1,5 +1,5 @@
 from mt19937 import MT19937 as _mt19937_impl
-from z3 import BitVec, BitVecRef, Concat, Extract
+from z3 import BitVec, BitVecRef, Concat, Extract, Solver
 
 class SymRandom():
 
@@ -24,9 +24,9 @@ class SymRandom():
 
     def random(self):
         """Get the next random number in the range 0.0 <= X < 1.0."""
-        a = Extract(31, 5, self.next())
-        b = Extract(31, 6, self.next())
-        return Concat(a, b)
+        a = Extract(31, 5, self.next()) # a: BitVec(27)
+        b = Extract(31, 6, self.next()) # b: BitVec(26)
+        return Concat(a, b) # (a << 27 | b): BitVec(53)
 
     def getrandbits(self, k: int):
         """getrandbits(k) -> x.  Generates an int with k random bits."""
@@ -65,7 +65,7 @@ class SymRandom():
         return
     '''
 
-from z3 import Solver, sat
+from z3 import sat
 import random
 
 def test_getrandbits(n: int, w: int):
@@ -106,6 +106,7 @@ def test_random(n: int):
 
 if __name__ == '__main__':
     test_random(200)
-    test_getrandbits(625, 32)
+    test_getrandbits(624, 32)
+    test_getrandbits(700, 32)
     test_getrandbits(180, 100)
     test_getrandbits(1000, 4)
