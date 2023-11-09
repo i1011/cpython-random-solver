@@ -68,6 +68,8 @@
 
 
 from z3 import LShR, BitVecRef
+from typing import List
+
 def shr(x: (int | BitVecRef), shift: int):
     if isinstance(x, BitVecRef):
         return LShR(x, shift)
@@ -81,14 +83,24 @@ LOWER_MASK = 0x7fffffff # least significant r bits
 class MT19937():
 
     def __init__(self):
-        self.index = 0
+        self.index = N
         self.state = [0] * N
     
+    def setstate(self, state: List):
+        if not isinstance(state, list) or len(state) != N + 1:
+            raise ValueError(f"'state' must be a list of {N + 1} elements")
+        if not isinstance(state[N], int) or not 0 <= state[N] <= N:
+            raise ValueError(f"'index' must be an integer between 0 and {N}")
+        self.state, self.index = state[:N], state[N]
+
+    def getstate(self):
+        return tuple(self.state) + tuple(self.index)
+
     def _update_mt(self):
         mt = self.state
         for kk in range(N):
             y = (mt[kk] & UPPER_MASK) | (mt[(kk + 1) % N] & LOWER_MASK)
-            mt[kk] = mt[(kk + M) % N] ^ shr(y, 1) ^ (y % 2)* MATRIX_A
+            mt[kk] = mt[(kk + M) % N] ^ shr(y, 1) ^ (y % 2) * MATRIX_A
 
     def genrand_uint32(self):
         if self.index >= N:
@@ -104,7 +116,8 @@ class MT19937():
     
     def init_genrand(self, s: int):
         """initializes mt[N] with a seed"""
-        assert isinstance(s, int)
+        if not isinstance(s, int):
+            raise TypeError("The only supported seed type is int.")
         mt = self.state
         mt[0] = s
         for mti in range(1, N):
@@ -132,7 +145,6 @@ class MT19937():
         mt[0] = 0x80000000
 
 import random
-from typing import List
 def test_state(n: int):
     print("- Test: internal state")
     print(f"    - {n} elements")
