@@ -4,14 +4,10 @@ from mt19937 import N, shr, MT19937 as _mt19937_impl
 def init_by_array_backward(mt, init_key, solver: Solver):
     mt = list(mt)
     key_length = len(init_key)
-    i, j = 1, 0
-    for _ in range(max(N, key_length), 0, -1):
-        i, j = i + 1, j + 1
-        if i >= N: i = 1
-        if j >= key_length: j = 0
-    for _ in range(N - 1, 0, -1):
-        i += 1
-        if i >= N: i = 1
+    i = (N + max(N, key_length)) % (N - 1)
+    j = max(N, key_length) % key_length
+    if i == 0:
+        i = N - 1
     assert mt[0] == 0x80000000
     t = 0
     def new_mt0():
@@ -19,13 +15,13 @@ def init_by_array_backward(mt, init_key, solver: Solver):
         t += 1
         return BitVec(f'mt0_{t}', 32)
     mt[0] = new_mt0()
-    for _ in range(1, N):
+    for _ in range(N - 1):
         if i == 1:
             mt[N - 1], i = mt[0], N
             mt[0] = new_mt0()
         i -= 1
         mt[i] = ((mt[i] + i) ^ ((mt[i - 1] ^ shr(mt[i - 1], 30)) * 1566083941)) % 2 ** 32
-    for _ in range(1, max(N, key_length) + 1):
+    for _ in range(max(N, key_length)):
         if j == 0:
             j = key_length
         if i == 1:
@@ -60,3 +56,4 @@ if __name__ == '__main__':
     test_init_by_array([2 ** 32 - 1])
     import random
     test_init_by_array([random.randrange(2 ** 32) for _ in range(10)])
+    test_init_by_array([random.randrange(2 ** 32) for _ in range(600)])
