@@ -1,5 +1,9 @@
 from mt19937 import MT19937 as _mt19937_impl
-from z3 import BitVec, BitVecRef, Concat, Extract, Solver, sat
+from z3 import (
+    BitVec, BitVecRef, Concat, Extract,
+    Solver, sat, simplify,
+    IntVal, Int2BV
+)
 
 class SymRandom():
 
@@ -22,7 +26,7 @@ class SymRandom():
         self._rng = _mt19937_impl()
         self.solver.reset()
         self.ts = 0
-        self.init_mt = [BitVec(0x80000000 - 1, 32) + 1] + [BitVec(f"init_mt_{i}", 32) for i in range(1, 624)]
+        self.init_mt = [Int2BV(IntVal(0x80000000), 32)] + [BitVec(f"init_mt_{i}", 32) for i in range(1, 624)]
         self._rng.setstate(self.init_mt + [624])
 
     def seed_recovery_slow(self, mt):
@@ -67,13 +71,13 @@ class SymRandom():
         if self._rng.sig_mtupdate:
             self._rng.sig_mtupdate = False
             self.add_dummy_vars()
-        return r
+        return simplify(r)
 
     def random(self):
         """Get the next random number in the range 0.0 <= X < 1.0."""
         a = Extract(31, 5, self.next()) # a: BitVec(27)
         b = Extract(31, 6, self.next()) # b: BitVec(26)
-        return Concat(a, b) # (a << 27 | b): BitVec(53)
+        return simplify(Concat(a, b)) # (a << 27 | b): BitVec(53)
 
     def getrandbits(self, k: int):
         """getrandbits(k) -> x.  Generates an int with k random bits."""
@@ -90,7 +94,7 @@ class SymRandom():
                 r = Extract(31, 32 - k, r)
             result = r if result is None else Concat(r, result)
             k -= 32
-        return result
+        return simplify(result)
 
 from z3 import sat
 import random
@@ -107,6 +111,7 @@ def test_getrandbits(n: int, w: int):
     rng = SymRandom(solver=sol)
     for ref in refs:
         sol.add(rng.getrandbits(w) == ref)
+    from z3 import simplify
     result, state, _ = rng.solve()
     assert result == sat
     random.setstate((3, tuple(state + [624]), None))
