@@ -1,25 +1,63 @@
 from mt19937 import MT19937 as _mt19937_impl
-from z3 import BitVec, BitVecRef, Concat, Extract, Solver
+from z3 import BitVec, BitVecRef, Concat, Extract, Solver, sat
 
 class SymRandom():
 
-    def __init__(self, solver=None):
-        self.init_mt = [BitVec(0x80000000 - 1, 32) + 1] + [BitVec(f"init_mt_{i}", 32) for i in range(1, 624)]
-        self._rng = _mt19937_impl()
-        self._rng.setstate(self.init_mt + [624])
+    def __init__(self, *, seed=None, solver: (Solver|None) = None):
         self.solver = solver if solver else Solver()
+        self.seed(seed)
+
+    def seed(self, a=None):
+        if a is None:
+            self.init_key = None
+        elif isinstance(a, BitVecRef) and a.size() == 32:
+            self.init_key = [a]
+        elif isinstance(a, list) and all(isinstance(x, BitVecRef) and x.size() == 32 for x in a):
+            if len(a) == 0:
+                raise ValueError('seed is an empty list')
+            self.init_key = a[:]
+        else:
+            raise TypeError('The only supported seed types are: z3.BitVec(32), List[z3.BitVec(32)] and None.')
+
+        self._rng = _mt19937_impl()
+        self.solver.reset()
         self.ts = 0
+        self.init_mt = [BitVec(0x80000000 - 1, 32) + 1] + [BitVec(f"init_mt_{i}", 32) for i in range(1, 624)]
+        self._rng.setstate(self.init_mt + [624])
+
+    def solve(self):
+        status = self.solver.check()
+        if status != sat:
+            return (status, None, None)
+        m = self.solver.model()
+        mt = [m.evaluate(s).as_long() for s in self.init_mt]
+        if self.init_key is None:
+            return (sat, mt, None)
+
+        self.solver.reset()
+        self._rng.init_by_array(self.init_key)
+        for i in range(624):
+            self.solver.add(self._rng.state[i] == mt[i])
+        status = self.solver.check()
+        if status != sat:
+            return (status, mt, None)
+        m = self.solver.model()
+        seed = [m.evaluate(s).as_long() for s in self.init_key]
+        return (status, mt, seed)
+
+    def add_dummy_vars(self):
+        self.ts += 1
+        state = self._rng.getstate()
+        dummy = [BitVec(f"dummy{self.ts}_{i}", 32) for i in range(624)]
+        for i in range(624):
+            self.solver.add(state[i] == dummy[i])
+        self._rng.setstate(dummy + [state[-1]])
 
     def next(self):
         r = self._rng.genrand_uint32()
         if self._rng.sig_mtupdate:
             self._rng.sig_mtupdate = False
-            self.ts += 1
-            state = self._rng.getstate()
-            dummy = [BitVec(f"dummy{self.ts}_{i}", 32) for i in range(624)]
-            for i in range(624):
-                self.solver.add(state[i] == dummy[i])
-            self._rng.setstate(dummy + [state[-1]])
+            self.add_dummy_vars()
         return r
 
     def random(self):
@@ -44,26 +82,6 @@ class SymRandom():
             result = r if result is None else Concat(r, result)
             k -= 32
         return result
-    '''
-
-    def seed(self, a):
-        if a == None:
-            return
-        if isinstance(a, int):
-            self.init_key = []
-            while a != 0:
-                self.init_key.append(a % 2 ** 32)
-                a //= 2 ** 32
-        elif isinstance(a, list) and all(isinstance(x, BitVecRef) and x.size() == 32 for x in a):
-            self.init_key = a
-        else:
-            raise TypeError('The only supported seed types are: int, List[z3.BitVec(32)] and None.')
-        
-        if len(self.init_key) == 0:
-            self.init_key = [0]
-        self._rng.init_by_array(self.init_key)
-        return
-    '''
 
 from z3 import sat
 import random
@@ -74,17 +92,18 @@ def test_getrandbits(n: int, w: int):
     print(f"    - {n} elements")
     print(f"    - seed: {seed}")
     random.seed(seed)
+    init_state = list(random.getstate()[1][:624])
     refs = [random.getrandbits(w) for _ in range(n)]
     sol = Solver()
-    rng = SymRandom(sol)
+    rng = SymRandom(solver=sol)
     for ref in refs:
         sol.add(rng.getrandbits(w) == ref)
-    assert sol.check() == sat
-    m = sol.model()
-    state = [m.evaluate(s).as_long() for s in rng.init_mt]
+    result, state, s = rng.solve()
+    assert result == sat
     random.setstate((3, tuple(state + [624]), None))
     for ref in refs:
         assert(random.getrandbits(w) == ref)
+    assert(state == init_state)
 
 def test_random(n: int):
     seed = random.getrandbits(32)
@@ -92,21 +111,40 @@ def test_random(n: int):
     print(f"    - {n} elements")
     print(f"    - seed: {seed}")
     random.seed(seed)
+    init_state = list(random.getstate()[1][:624])
     refs = [random.random() for _ in range(n)]
     sol = Solver()
-    rng = SymRandom(sol)
+    rng = SymRandom(solver=sol)
     for ref in refs:
         sol.add(rng.random() == int(ref * 2 ** 53))
-    assert sol.check() == sat
-    m = sol.model()
-    state = [m.evaluate(s).as_long() for s in rng.init_mt]
+    result, state, s = rng.solve()
+    assert result == sat
     random.setstate((3, tuple(state + [624]), None))
     for ref in refs:
         assert(random.random() == ref)
+    assert(state == init_state)
+
+def test_seed(n: int, w: int, seed: int):
+    print(f"- Test: test_seed")
+    print(f"    - {n} elements, {w}-bit")
+    print(f"    - seed: {seed}")
+    random.seed(seed)
+    init_state = list(random.getstate()[1][:624])
+    refs = [random.getrandbits(w) for _ in range(n)]
+    sol = Solver()
+    rng = SymRandom(solver=sol)
+    rng.seed([BitVec(f'seed', 32)])
+    for ref in refs:
+        sol.add(rng.getrandbits(w) == ref)
+    result, state, s = rng.solve()
+    assert(state == init_state)
+    assert result == sat
+    assert s[0] == abs(seed)
 
 if __name__ == '__main__':
-    test_random(200)
     test_getrandbits(624, 32)
     test_getrandbits(700, 32)
-    test_getrandbits(180, 100)
-    test_getrandbits(1000, 4)
+    test_getrandbits(500, 100)
+    test_random(1248)
+    test_seed(1248, 21, -1)
+    test_seed(624, 32, 0)

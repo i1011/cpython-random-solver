@@ -128,9 +128,9 @@ class MT19937():
 
     def init_by_array(self, init_key):
         """initialize by an array with array-length"""
+        self.init_genrand(19650218)
         key_length = len(init_key)
         mt = self.state
-        self.init_genrand(19650218)
         i, j = 1, 0
         for _ in range(max(N, key_length), 0, -1):
             mt[i] = ((mt[i] ^ ((mt[i - 1] ^ shr(mt[i - 1], 30)) * 1664525)) + init_key[j] + j) % 2 ** 32
