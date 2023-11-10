@@ -25,7 +25,17 @@ class SymRandom():
         self.init_mt = [BitVec(0x80000000 - 1, 32) + 1] + [BitVec(f"init_mt_{i}", 32) for i in range(1, 624)]
         self._rng.setstate(self.init_mt + [624])
 
-    def solve(self):
+    def seed_recovery_slow(self, mt):
+        self._rng.init_by_array(self.init_key)
+        state = self._rng.getstate()
+        for i in range(624):
+            self.solver.add(state[i] == mt[i])
+    
+    def seed_recovery_fast(self, mt):
+        from mt19937_backward import init_by_array_backward
+        init_by_array_backward(mt, self.init_key, self.solver)
+
+    def solve(self, fast_seed_recovery=True):
         status = self.solver.check()
         if status != sat:
             return (status, None, None)
@@ -35,9 +45,8 @@ class SymRandom():
             return (sat, mt, None)
 
         self.solver.reset()
-        self._rng.init_by_array(self.init_key)
-        for i in range(624):
-            self.solver.add(self._rng.state[i] == mt[i])
+        if fast_seed_recovery: self.seed_recovery_fast(mt)
+        else: self.seed_recovery_slow(mt)
         status = self.solver.check()
         if status != sat:
             return (status, mt, None)
@@ -98,7 +107,7 @@ def test_getrandbits(n: int, w: int):
     rng = SymRandom(solver=sol)
     for ref in refs:
         sol.add(rng.getrandbits(w) == ref)
-    result, state, s = rng.solve()
+    result, state, _ = rng.solve()
     assert result == sat
     random.setstate((3, tuple(state + [624]), None))
     for ref in refs:
@@ -117,17 +126,18 @@ def test_random(n: int):
     rng = SymRandom(solver=sol)
     for ref in refs:
         sol.add(rng.random() == int(ref * 2 ** 53))
-    result, state, s = rng.solve()
+    result, state, _ = rng.solve()
     assert result == sat
     random.setstate((3, tuple(state + [624]), None))
     for ref in refs:
         assert(random.random() == ref)
     assert(state == init_state)
 
-def test_seed(n: int, w: int, seed: int):
-    print(f"- Test: test_seed")
+def test_seed(n: int, w: int, seed: int, fast_seed_recovery: bool):
+    print(f"- Test: seed recovery")
     print(f"    - {n} elements, {w}-bit")
     print(f"    - seed: {seed}")
+    print(f"    - fast_seed_recovery: {fast_seed_recovery}")
     random.seed(seed)
     init_state = list(random.getstate()[1][:624])
     refs = [random.getrandbits(w) for _ in range(n)]
@@ -136,9 +146,9 @@ def test_seed(n: int, w: int, seed: int):
     rng.seed([BitVec(f'seed', 32)])
     for ref in refs:
         sol.add(rng.getrandbits(w) == ref)
-    result, state, s = rng.solve()
-    assert(state == init_state)
+    result, state, s = rng.solve(fast_seed_recovery)
     assert result == sat
+    assert state == init_state
     assert s[0] == abs(seed)
 
 if __name__ == '__main__':
@@ -146,5 +156,6 @@ if __name__ == '__main__':
     test_getrandbits(700, 32)
     test_getrandbits(500, 100)
     test_random(1248)
-    test_seed(1248, 21, -1)
-    test_seed(624, 32, 0)
+    test_seed(1248, 21, -1, True)
+    test_seed(624, 32, 0, True)
+    test_seed(624, 32, 0, False)
