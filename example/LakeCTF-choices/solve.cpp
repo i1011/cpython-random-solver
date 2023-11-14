@@ -27,12 +27,7 @@ int main() {
             var[c] = r;
         }
     }
-    Types::Bool init_mt;
-    init_mt.set(kBits);
-    for (size_t i = kBits; i--;) {
-        assert(solver.basis[i][i]);
-        init_mt[i] = (init_mt & solver.basis[i]).count() % 2;
-    }
+    auto init_mt = solver.get_solution();
     char ans[33] = {};
     for (int i = 0; i < 128; ++i) {
         if (!valid[i]) continue;

@@ -3,7 +3,6 @@
 #include <iostream>
 
 using MT19937::u32;
-using MT19937::Bool;
 using MT19937::kBits;
 using MT19937::kW;
 
@@ -16,12 +15,7 @@ int main() {
         std::cin >> ref;
         solver.add_eq(rng.next(), ref);
     }
-    Bool init_mt;
-    init_mt.set(kBits);
-    for (size_t i = kBits; i--;) {
-        assert(solver.basis[i][i]);
-        init_mt[i] = (init_mt & solver.basis[i]).count() % 2;
-    }
+    auto init_mt = solver.get_solution();
     int c = 0;
     std::cin.seekg(0, std::ios::beg);
     rng.reset();

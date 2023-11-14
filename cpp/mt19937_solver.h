@@ -1,4 +1,5 @@
 #include "types.h"
+#include <cassert>
 namespace MT19937 {
     using namespace Types;
 
@@ -80,6 +81,15 @@ namespace MT19937 {
         }
         void add_eq(const BV32 &lhs, u32 rhs) {
             add_eq(lhs, UInt2BV32(rhs));
+        }
+        Bool get_solution() const {
+            assert(rank == kBits);
+            Bool sol; sol.set(kBits);
+            for (size_t i = kBits; i--;) {
+                assert(basis[i][i]);
+                sol[i] = (sol & basis[i]).count() & 1;
+            }
+            return sol;
         }
     };
 }
