@@ -7,7 +7,9 @@ constexpr size_t kW = 32, kN = 624, kM = 397, kBits = kN * kW;
 
 using u32 = uint32_t;
 using Bool = std::bitset<kBits + 1>;
-using BV32 = std::array<Bool, kW>;
+template<size_t W>
+using BV = std::array<Bool, W>;
+using BV32 = BV<32>;
 
 Bool operator&(const Bool &x, bool v) {
     return v ? x : Bool();
@@ -26,23 +28,25 @@ BV32 operator|(const BV32 &x, const BV32 &y) {
     for (size_t i = 0; i < kW; ++i) r[i] = x[i] | y[i];
     return r;
 }
-BV32& operator^=(BV32 &x, const BV32 &y) {
+template<size_t W>
+BV<W>& operator^=(BV<W> &x, const BV<W> &y) {
     for (size_t i = 0; i < kW; ++i) x[i] ^= y[i];
     return x;
 }
-BV32 operator^(const BV32 &x, const BV32 &y) {
-    BV32 r = x;
+template<size_t W>
+BV<W> operator^(const BV<W> &x, const BV<W> &y) {
+    auto r = x;
     return r ^= y;
 }
-BV32 operator>>(const BV32 &x, u32 w) {
-    assert(w <= kW);
+template<size_t W>
+BV<W> operator>>(const BV<W> &x, u32 w) {
     BV32 r;
     for (size_t i = w; i < kW; ++i) r[i - w] = x[i];
     return r;
 }
-BV32 operator<<(const BV32 &x, u32 w) {
-    assert(w <= kW);
-    BV32 r;
+template<size_t W>
+BV<W> operator<<(const BV<W> &x, u32 w) {
+    BV<W> r;
     for (size_t i = w; i < kW; ++i) r[i] = x[i - w];
     return r;
 }
@@ -61,7 +65,7 @@ struct MT19937 {
             mt[kk] = mt[(kk + kM) % kN] ^ (y >> 1) ^ mat_a(y);
         }
     }
-    MT19937() {
+    void reset() {
         for (size_t i = 0; i < kN; ++i) {
             mt[i] = BV32();
             for (size_t j = 0; j < kW; ++j) {
@@ -70,6 +74,7 @@ struct MT19937 {
         }
         index = kN;
     }
+    MT19937() { reset(); }
     BV32 next() {
         if (index >= kN) update_mt(), index = 0;
         auto y = mt[index++];
@@ -94,13 +99,16 @@ struct MT19937 {
 };
 using Eq = std::bitset<kBits + 1>;
 struct Solver {
+    u32 rank;
     std::bitset<kBits + 1> basis[kBits];
+    Solver(): rank(0), basis {} {};
     void add_eq(const Bool &lhs, bool rhs) {
+        if (rank == kBits) return;
         auto tmp = lhs; tmp[kBits] = rhs;
         for (size_t i = 0; i < kBits; ++i) {
             if (!tmp[i]) continue;
             if (basis[i][i]) tmp ^= basis[i];
-            else return basis[i] = tmp, void();
+            else return ++rank, basis[i] = tmp, void();
         }
         // singular
     }
@@ -112,13 +120,13 @@ struct Solver {
         add_eq(lhs, std::bitset<32>(rhs));
     }
 } solver;
-MT19937 test;
+MT19937 rng;
 int main() {
-    solver.add_eq(test.mt[0], 0x80000000);
+    solver.add_eq(rng.mt[0], 0x80000000);
     for (size_t i = 0; i < kN; ++i) {
         u32 ref;
         std::cin >> ref;
-        solver.add_eq(test.next(), ref);
+        solver.add_eq(rng.next(), ref);
     }
     Bool init_mt;
     init_mt.set(kBits);
@@ -127,9 +135,11 @@ int main() {
         init_mt[i] = (init_mt & solver.basis[i]).count() % 2;
     }
     int c = 0;
+    std::cin.seekg(0, std::ios::beg);
+    rng.reset();
     for (u32 ref; std::cin >> ref; ++c) {
         u32 pred = 0;
-        auto tmp = test.next();
+        auto tmp = rng.next();
         for (size_t i = 0; i < kW; ++i) {
             pred |= (int)(init_mt & tmp[i]).count() % 2 << i;
         }
