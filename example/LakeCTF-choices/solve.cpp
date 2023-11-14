@@ -31,10 +31,7 @@ int main() {
     char ans[33] = {};
     for (int i = 0; i < 128; ++i) {
         if (!valid[i]) continue;
-        uint32_t pred = 0;
-        for (size_t j = 0; j < 5; ++j) {
-            pred |= (int)(init_mt & var[i][j]).count() % 2 << j;
-        }
+        auto pred = init_mt.eval(var[i]).to_ulong();
         ans[pred] = (char)i;
     }
     std::cout << "EPFL{" << ans << "}" << std::endl;

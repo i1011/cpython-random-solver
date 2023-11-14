@@ -20,11 +20,7 @@ int main() {
     std::cin.seekg(0, std::ios::beg);
     rng.reset();
     for (u32 ref; std::cin >> ref; ++c) {
-        u32 pred = 0;
-        auto tmp = rng.next();
-        for (size_t i = 0; i < kW; ++i) {
-            pred |= (int)(init_mt & tmp[i]).count() % 2 << i;
-        }
+        u32 pred = (u32)init_mt.eval(rng.next()).to_ulong();
         if (pred != ref) std::cout << "!" << c << std::endl;
     }
     std::cout << "OK " << c << " items" << std::endl;

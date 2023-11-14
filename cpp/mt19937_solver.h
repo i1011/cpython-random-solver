@@ -56,6 +56,17 @@ namespace MT19937 {
             return result;
         }
     };
+    struct Model : public Bool {
+        bool eval(const Bool &x) const {
+            return ((*this) & x).count() & 1;
+        }
+        template<size_t W>
+        std::bitset<W> eval(const BV<W> &xs) const {
+            std::bitset<W> r;
+            for (size_t i = 0; i < W; ++i) r[i] = eval(xs[i]);
+            return r;
+        }
+    };
     struct Solver {
         u32 rank;
         Bool basis[kBits];
@@ -82,9 +93,9 @@ namespace MT19937 {
         void add_eq(const BV32 &lhs, u32 rhs) {
             add_eq(lhs, UInt2BV32(rhs));
         }
-        Bool get_solution() const {
+        Model get_solution() const {
             assert(rank == kBits);
-            Bool sol; sol.set(kBits);
+            Model sol; sol.set(kBits);
             for (size_t i = kBits; i--;) {
                 assert(basis[i][i]);
                 sol[i] = (sol & basis[i]).count() & 1;
