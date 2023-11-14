@@ -2,7 +2,6 @@
 #include <array>
 #include <bitset>
 #include <iostream>
-#include <random>
 
 constexpr size_t kW = 32, kN = 624, kM = 397, kBits = kN * kW;
 
@@ -69,7 +68,7 @@ struct MT19937 {
                 mt[i][j].set(i * kW + j);
             }
         }
-        index = 226;
+        index = kN;
     }
     BV32 next() {
         if (index >= kN) update_mt(), index = 0;
@@ -115,10 +114,11 @@ struct Solver {
 } solver;
 MT19937 test;
 int main() {
-    std::mt19937 rng(12345);
     solver.add_eq(test.mt[0], 0x80000000);
     for (size_t i = 0; i < kN; ++i) {
-        solver.add_eq(test.next(), (u32)rng());
+        u32 ref;
+        std::cin >> ref;
+        solver.add_eq(test.next(), ref);
     }
     Bool init_mt;
     init_mt.set(kBits);
@@ -126,13 +126,15 @@ int main() {
         assert(solver.basis[i][i]);
         init_mt[i] = (init_mt & solver.basis[i]).count() % 2;
     }
-    for (int i = 0; i < 1000; ++i) {
-        u32 pred = 0, ref = (u32)rng();
+    int c = 0;
+    for (u32 ref; std::cin >> ref; ++c) {
+        u32 pred = 0;
         auto tmp = test.next();
         for (size_t i = 0; i < kW; ++i) {
             pred |= (int)(init_mt & tmp[i]).count() % 2 << i;
         }
-        assert(pred == ref);
+        if (pred != ref) std::cout << "!" << c << std::endl;
     }
+    std::cout << "OK " << c << " items" << std::endl;
     return 0;
 }
